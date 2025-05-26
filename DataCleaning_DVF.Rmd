@@ -7,7 +7,7 @@ output: html_document
 
 importing my .csv file from johns Hopkins CSSE COVID-19 Data
 ```{r}
-# Step 1: Install readr (if you haven't already)
+# Step 1: Install readr 
 install.packages("readr")
 
 # Step 2: Load the readr package
