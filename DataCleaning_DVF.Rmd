@@ -1,0 +1,1067 @@
+---
+title: "final_project_DataCleaning"
+author: "Ruth"
+date: "2025-05-04"
+output: html_document
+---
+
+importing my .csv file from johns Hopkins CSSE COVID-19 Data
+```{r}
+# Step 1: Install readr (if you haven't already)
+install.packages("readr")
+
+# Step 2: Load the readr package
+library(readr)
+
+# Step 3: Then run your read_csv line
+data <- read_csv("owid-covid-data.csv")
+install.packages("dplyr")   # Run this only once
+library(dplyr) 
+```
+
+
+taking a closer look 
+  - the dimension 
+  - N/a values on each row/column 
+  - duplicates 
+  - negative values or weird values that dont fit int(outliers)
+```{r}
+#checking my columns 
+colnames(data)
+# looking at the unique values of each col. lorddd it is a lotttt
+for (col in names(data)) {
+  cat(" Column:", col, "\n")
+  print(unique(data[[col]]))
+  cat("\n--------------------------\n")
+  
+}
+```
+
+Here I am trying to look at the NA's in each column and display it nice and check for how may percentage of my data is null vals..
+  - the data is sparse for most of my variables
+  - I decided to gruop my variables based on what they are trying to measure 
+    1 Geographic Identity columns
+    2 Covid 19 cases data
+    3 Covid 19 deaths data
+    4 testing Data
+    5 Vaccination Data
+    6 Hospitilization and ICU data
+    7 Goverment response 
+    8 Demographics & Socioeconomic Indicator
+    9 Excess Mortality
+
+Just taking a quick look I most definetly don't need Hospitilization and ICU data, because it has >90% NA and it is not relevant for the scope of my project.. so I will drop these variables
+
+```{r}
+#colSums(is.na(data))
+# Total number of rows
+total_rows <- nrow(data)
+
+# Count NAs and calculate percentages
+na_counts <- colSums(is.na(data))
+na_percent <- round((na_counts / total_rows) * 100, 2)
+
+# Create a pretty table
+na_table <- data.frame(
+  column = names(na_counts),
+  na_count = na_counts,
+  percent_na = na_percent,
+  row.names = NULL
+)
+
+# View the full table
+print(na_table)
+```
+
+
+
+SAving my NA table so I can better analyze it 
+```{r}
+write.csv(na_table, "/Users/ruthermiasadnew/Downloads/na_table.csv", row.names = FALSE)
+getwd()
+```
+
+here I am dropping all the columns with high NA values.. like above 90% of the data is missing 
+also the Hospitalization ICU data which is not relevant for this project. 
+```{r}
+# Drop columns with >90% missing data
+data_cleaned <- data %>%
+  select(-c(
+    excess_mortality_cumulative_absolute,
+    excess_mortality_cumulative,
+    excess_mortality,
+    excess_mortality_cumulative_per_million,
+    icu_patients,
+    icu_patients_per_million,
+    hosp_patients,
+    hosp_patients_per_million,
+    weekly_icu_admissions,
+    weekly_icu_admissions_per_million,
+    weekly_hosp_admissions,
+    weekly_hosp_admissions_per_million
+  ))
+```
+
+Just checking if I actually dropped them 
+```{r}
+ncol(data)        # Before
+ncol(data_cleaned) # After dropping
+```
+
+here I am taking a closer look at what each column contains.. like the type and it's unique values.. this will help me better decide how to handle the NA's for each variable 
+```{r}
+#str(data_cleaned)
+for (col in names(data_cleaned)) {
+  cat("🔹 Column:", col, "\n")
+  cat("📦 Type:", class(data_cleaned[[col]]), "\n")
+  cat("🔎 Unique values:\n")
+  
+  print(unique(data_cleaned[[col]]))  # Shows ALL unique values
+  
+  cat("\n--------------------------\n")
+}
+
+
+```
+
+Checking again for my cleaned table,, like how many % of the data is N/A
+```{r}
+
+# Total number of rows
+total_rows <- nrow(data_cleaned)
+
+# Count NAs and calculate percentages
+na_counts <- colSums(is.na(data_cleaned))
+na_percent <- round((na_counts / total_rows) * 100, 2)
+
+# Create a pretty table
+na_table2 <- data.frame(
+  column = names(na_counts),
+  na_count = na_counts,
+  percent_na = na_percent,
+  row.names = NULL
+)
+
+# View the full table
+print(na_table2)
+```
+Okay here what I tried to do is, positive rate seems like one of the variables that will be very useful for my project.. it tells me the number of positive cases in each country the bad news is it has a lot of missing values like 78% of the data... so my best bet is to fill the missing values by the mean of each country. 
+
+```{r}
+library(dplyr)
+
+# Impute missing positive_rate values using each country's mean
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  mutate(
+    positive_rate = ifelse(
+      is.na(positive_rate),
+      mean(positive_rate, na.rm = TRUE),
+      positive_rate
+    )
+  ) %>%
+  ungroup()
+```
+
+okay now I will try and squeeze all the relevant data from variables that basically tell me the same thing and those varaibles are... 
+total_tests
+new_tests
+total_tests_per_thousand
+new_tests_per_thousand
+new_tests_smoothed
+new_tests_smoothed_per_thousand
+positive_rate
+tests_per_case
+
+```{r}
+# List of your variables
+vars_to_check <- c(
+  "total_tests", "new_tests", "total_tests_per_thousand",
+  "new_tests_per_thousand", "new_tests_smoothed",
+  "new_tests_smoothed_per_thousand", "positive_rate",
+  "tests_per_case", "tests_units"
+)
+
+# Loop to display unique values for each
+for (var in vars_to_check) {
+  cat("🔹 Variable:", var, "\n")
+  cat("📦 Type:", class(data_cleaned[[var]]), "\n")
+  cat("🔎 Unique values:\n")
+  print(unique(data_cleaned[[var]]))
+  cat("\n------------------------------\n\n")
+}
+
+
+```
+
+so they are all numeric but also the have >80 % missing values so what should we dooo..
+  my approach is going to be squezze those variables and get one meaningful variable out of them..so I     can drop them and use my varibale instead. 
+  
+that variable is the testing effieciency and it will be calculating positive rates and new tests per thousand. so instead of using 8 variables I can use one and get a better result 
+```{r}
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  mutate(
+    new_tests_smoothed_per_thousand = ifelse(
+      is.na(new_tests_smoothed_per_thousand),
+      mean(new_tests_smoothed_per_thousand, na.rm = TRUE),
+      new_tests_smoothed_per_thousand
+    )
+  ) %>%
+  ungroup()
+
+```
+now I can calculate my testing efficiency variable 
+```{r}
+
+sum(is.na(data_cleaned$testing_efficiency))
+unique(data$new_tests_smoothed_per_thousand)
+
+dim(data_cleaned)
+# Copy the cleaned column from `data` into `data_cleaned`
+data_cleaned$new_tests_smoothed_per_thousand <- data$new_tests_smoothed_per_thousand
+
+data_cleaned <- data_cleaned %>%
+  mutate(testing_efficiency = scale(new_tests_smoothed_per_thousand)[,1] -
+                              scale(positive_rate)[,1])
+
+dim(data_cleaned)
+names(data_cleaned)
+
+
+```
+```{r}
+library(dplyr)
+library(zoo)
+
+data <- data %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(new_tests_smoothed_per_thousand = na.locf(new_tests_smoothed_per_thousand, na.rm = FALSE)) %>%
+  ungroup()
+
+data <- data %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(new_tests_smoothed_per_thousand = na.locf(new_tests_smoothed_per_thousand, fromLast = TRUE, na.rm = FALSE)) %>%
+  ungroup()
+
+data <- data %>%
+  group_by(continent) %>%
+  mutate(new_tests_smoothed_per_thousand = ifelse(
+    is.na(new_tests_smoothed_per_thousand),
+    mean(new_tests_smoothed_per_thousand, na.rm = TRUE),
+    new_tests_smoothed_per_thousand
+  )) %>%
+  ungroup()
+
+data <- data %>%
+  mutate(new_tests_smoothed_per_thousand = ifelse(
+    is.na(new_tests_smoothed_per_thousand),
+    mean(new_tests_smoothed_per_thousand, na.rm = TRUE),
+    new_tests_smoothed_per_thousand
+  ))
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+making NA its own category for test_units. 
+```{r}
+# Convert NAs in tests_units into a "Missing" category
+data_cleaned <- data_cleaned %>%
+  mutate(tests_units = ifelse(is.na(tests_units), "Missing", tests_units)) %>%
+  mutate(tests_units = as.factor(tests_units))  # optional: convert to factor
+```
+
+
+```{r}
+# Drop testing-related columns after composite feature created
+data_cleaned <- data_cleaned %>%
+  select(-c(
+    total_tests,
+    new_tests,
+    total_tests_per_thousand,
+    new_tests_per_thousand,
+    new_tests_smoothed,
+    new_tests_smoothed_per_thousand,
+    tests_per_case,
+  ))
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+
+```{r}
+data_cleaned <- data_cleaned %>%
+  select(-total_tests, -new_tests, -total_tests_per_thousand, -new_tests_per_thousand,
+         -new_tests_smoothed, -new_tests_smoothed_per_thousand,
+         -tests_per_case, -tests_units)
+```
+
+
+```{r}
+dim(data_cleaned)
+names(data_cleaned)
+```
+
+
+```{r}
+# Total number of rows
+total_rows <- nrow(data_cleaned)
+
+# Count NAs and calculate percentages
+na_counts <- colSums(is.na(data_cleaned))
+na_percent <- round((na_counts / total_rows) * 100, 2)
+
+# Create a pretty table
+na_table3 <- data.frame(
+  column = names(na_counts),
+  na_count = na_counts,
+  percent_na = na_percent,
+  row.names = NULL
+)
+
+# View the full table
+print(na_table3)
+
+```
+
+
+```{r}
+install.packages("pheatmap")  # only if you haven't yet
+library(pheatmap)
+```
+
+
+```{r}
+vaccine_vars <- c(
+  "total_vaccinations",
+  "people_vaccinated",
+  "people_fully_vaccinated",
+  "total_boosters",
+  "new_vaccinations",
+  "new_vaccinations_smoothed",
+  "total_vaccinations_per_hundred",
+  "people_vaccinated_per_hundred",
+  "people_fully_vaccinated_per_hundred",
+  "total_boosters_per_hundred",
+  "new_vaccinations_smoothed_per_million",
+  "new_people_vaccinated_smoothed",
+  "new_people_vaccinated_smoothed_per_hundred"
+)
+# Check data types
+sapply(data_cleaned[vaccine_vars], class)
+```
+
+
+```{r}
+# Reuse your cleaned correlation matrix
+cor_matrix <- cor(vaccine_vars_clean, use = "pairwise.complete.obs")
+
+# Plot heatmap
+pheatmap(cor_matrix,
+         color = colorRampPalette(c("red", "white", "blue"))(50),
+         fontsize = 9,
+         fontsize_row = 9,
+         fontsize_col = 9,
+         angle_col = 45,
+         display_numbers = TRUE,
+         main = "💉 Correlation Heatmap of Vaccine Variables")
+```
+
+
+```{r}
+dim(data_cleaned)
+```
+Based on the corrrelation heat map I will be dropping more variables that are highly correlated, because they dont add meaningful insight to my end Goal they are just redudant. 
+
+```{r}
+drop_vars <- c(
+  "total_vaccinations",
+  "people_vaccinated",
+  "people_fully_vaccinated",
+  "total_boosters",
+  "new_vaccinations",
+  "new_people_vaccinated_smoothed",
+  "new_people_vaccinated_smoothed_per_hundred",
+  "people_vaccinated_per_hundred"
+)
+# data_cleaned <- data_cleaned %>% 
+#   select(-all_of(drop_vars))
+
+```
+
+```{r}
+dim(data_cleaned)
+```
+well  stringency_index is very important it tells me how strict the govenmnent was with policy when it came to covid. 
+```{r}
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  mutate(
+    stringency_index = ifelse(
+      is.na(stringency_index),
+      mean(stringency_index, na.rm = TRUE),
+      stringency_index
+    )
+  ) %>%
+  ungroup()
+```
+
+
+```{r}
+#colSums(is.na(data))
+# Total number of rows
+total_rows <- nrow(data_cleaned)
+
+# Count NAs and calculate percentages
+na_counts <- colSums(is.na(data_cleaned))
+na_percent <- round((na_counts / total_rows) * 100, 2)
+
+# Create a pretty table
+na_table2 <- data.frame(
+  column = names(na_counts),
+  na_count = na_counts,
+  percent_na = na_percent,
+  row.names = NULL
+)
+
+# View the full table
+print(na_table2)
+```
+so far this is what we have pookie 
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+
+# Step 1: Calculate % of missing values for each column
+missing_data <- data_cleaned %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "na_count") %>%
+  mutate(
+    total_rows = nrow(data_cleaned),
+    percent_missing = (na_count / total_rows) * 100
+  )
+
+# Step 2: Plot missingness as a barplot
+ggplot(missing_data, aes(x = reorder(variable, -percent_missing), y = percent_missing)) +
+  geom_bar(stat = "identity", fill = "salmon") +
+  coord_flip() +
+  labs(
+    title = "🔍 Percent of Missing Values per Variable",
+    x = "Variable",
+    y = "Missing Percentage (%)"
+  ) +
+  theme_minimal(base_size = 10)
+```
+Boosters - it would make sense that we have a lot of missing data here 
+```{r}
+#unique(data_cleaned$total_boosters_per_hundred)
+data_cleaned$total_boosters_per_hundred[is.na(data_cleaned$total_boosters_per_hundred)] <- 0
+sum(is.na(data_cleaned$total_boosters_per_hundred))
+```
+
+people_fully_vaccinated_per_hundred- you are getting dropped pookie
+
+also I am imputing 0 for total_vaccinations_per_hundred missing values 
+```{r}
+# unique(data_cleaned$people_fully_vaccinated_per_hundred)
+# cor(
+#   data_cleaned$total_vaccinations_per_hundred,
+#   data_cleaned$people_fully_vaccinated_per_hundred,
+#   use = "complete.obs"
+#)#0.9604988 - very high correlation 
+
+data_cleaned <- data_cleaned %>%
+  select(-people_fully_vaccinated_per_hundred)
+
+data_cleaned <- data_cleaned %>%
+  mutate(total_vaccinations_per_hundred = ifelse(
+    is.na(total_vaccinations_per_hundred), 0, total_vaccinations_per_hundred
+  ))
+sum(is.na(data_cleaned$total_vaccinations_per_hundred))
+
+```
+tests_units
+```{r}
+unique(data_cleaned$tests_units)
+data_cleaned <- data_cleaned %>%
+  mutate(tests_units = ifelse(is.na(tests_units), "unknown", tests_units))
+sum(is.na(data_cleaned$tests_units))
+
+```
+```{r}
+#colSums(is.na(data))
+# Total number of rows
+total_rows <- nrow(data_cleaned)
+
+# Count NAs and calculate percentages
+na_counts <- colSums(is.na(data_cleaned))
+na_percent <- round((na_counts / total_rows) * 100, 2)
+
+# Create a pretty table
+na_table3 <- data.frame(
+  column = names(na_counts),
+  na_count = na_counts,
+  percent_na = na_percent,
+  row.names = NULL
+)
+
+# View the full table
+print(na_table3)
+
+```
+
+handwashing_facilities- 
+```{r}
+unique(data_cleaned$handwashing_facilities)
+data_cleaned <- data_cleaned %>%
+  mutate(
+    handwashing_missing = ifelse(is.na(handwashing_facilities), 1, 0),
+    handwashing_facilities = ifelse(is.na(handwashing_facilities), 0, handwashing_facilities)
+  )
+sum(is.na(data_cleaned$handwashing_facilities))
+```
+
+	
+reproduction_rate
+```{r}
+#unique(data_cleaned$reproduction_rate)
+
+#by country pookie
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  mutate(reproduction_rate = ifelse(
+    is.na(reproduction_rate),
+    mean(reproduction_rate, na.rm = TRUE),
+    reproduction_rate
+  )) %>%
+  ungroup()
+sum(is.na(data_cleaned$reproduction_rate))
+
+# Add a missingness flag for reproduction_rate
+library(dplyr)
+
+data_cleaned <- data_cleaned %>%
+  mutate(reproduction_rate_missing = ifelse(is.na(reproduction_rate), 1, 0))
+
+```
+
+new_vaccinations_smoothed and new_vaccinations_smoothed_per_million tell me the exact same thing 
+
+```{r}
+unique(data_cleaned$new_vaccinations_smoothed_per_million)
+# Drop the raw version
+data_cleaned <- data_cleaned %>%
+  select(-new_vaccinations_smoothed)
+
+# Impute 0 for per million version
+data_cleaned <- data_cleaned %>%
+  mutate(new_vaccinations_smoothed_per_million = ifelse(
+    is.na(new_vaccinations_smoothed_per_million),
+    0,
+    new_vaccinations_smoothed_per_million
+  ))
+
+sum(is.na(data_cleaned$new_vaccinations_smoothed_per_million))
+
+```
+
+extreme_poverty - 
+```{r}
+unique(data_cleaned$extreme_poverty)
+data_cleaned <- data_cleaned %>%
+  mutate(extreme_poverty = ifelse(is.na(extreme_poverty), 0, extreme_poverty))
+sum(is.na(data_cleaned$extreme_poverty))
+```
+male and female smokers.. well I want to join them cause I am not working with gender here.. 
+```{r}
+data_cleaned <- data_cleaned %>%
+  mutate(avg_smokers = rowMeans(select(., female_smokers, male_smokers), na.rm = TRUE))
+data_cleaned <- data_cleaned %>%
+  select(-female_smokers, -male_smokers)
+data_cleaned$avg_smokers[is.na(data_cleaned$avg_smokers)] <- 0
+sum(is.na(data_cleaned$avg_smokers))
+unique(data_cleaned$avg_smokers)
+```
+
+hospital_beds_per_thousand
+```{r}
+# data_cleaned <- data_cleaned %>%
+#   group_by(location) %>%
+#   mutate(hospital_beds_per_thousand = ifelse(
+#     is.na(hospital_beds_per_thousand),
+#     mean(hospital_beds_per_thousand, na.rm = TRUE),
+#     hospital_beds_per_thousand
+#   )) %>%
+#   ungroup()
+# sum(is.na(data_cleaned$hospital_beds_per_thousand))
+# unique(data_cleaned$hospital_beds_per_thousand)
+
+# Load necessary library
+library(dplyr)
+
+# Select relevant columns and remove rows with NA
+cor_data <- data_cleaned %>%
+  select(hospital_beds_per_thousand, reproduction_rate, positive_rate, new_cases_per_million) %>%
+  na.omit()
+
+# Compute the correlation matrix
+cor_matrix <- cor(cor_data)
+
+# Print it nicely
+print(round(cor_matrix, 3))
+
+#hospital beds has a low correlation with the potentially key variables so I will drop it 
+# Drop hospital_beds_per_thousand
+data_cleaned <- data_cleaned %>%
+  select(-hospital_beds_per_thousand)
+names(data_cleaned)
+```
+
+positive_rates 
+```{r}
+unique(data_cleaned$positive_rate)
+     data_cleaned <- data_cleaned %>%
+  mutate(
+    positive_rate_missing = ifelse(is.na(positive_rate), 1, 0),
+    positive_rate = ifelse(is.na(positive_rate), 0, positive_rate)
+  )
+
+sum(is.na(data_cleaned$positive_rate))
+names(data_cleaned)
+```
+
+testing_efficiency
+
+```{r}
+sum(is.na(data_cleaned$testing_efficiency))
+
+unique(data_cleaned$positive_rate)
+
+```
+
+human_development_index
+```{r}
+sum(is.na(data_cleaned$human_development_index))
+data_cleaned <- data_cleaned %>%
+  group_by(continent) %>%
+  mutate(human_development_index = ifelse(
+    is.na(human_development_index),
+    mean(human_development_index, na.rm = TRUE),
+    human_development_index
+  )) %>%
+  ungroup()
+
+unique(data_cleaned$human_development_index)
+
+```
+
+cardiovasc_death_rate
+```{r}
+sum(is.na(data_cleaned$cardiovasc_death_rate))
+
+
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(cardiovasc_death_rate = na.locf(cardiovasc_death_rate, na.rm = FALSE)) %>%  # forward fill
+  mutate(cardiovasc_death_rate = na.locf(cardiovasc_death_rate, fromLast = TRUE, na.rm = FALSE)) %>%  # backward fill
+  ungroup()
+
+data_cleaned <- data_cleaned %>%
+  group_by(continent) %>%
+  mutate(cardiovasc_death_rate = ifelse(
+    is.na(cardiovasc_death_rate),
+    mean(cardiovasc_death_rate, na.rm = TRUE),
+    cardiovasc_death_rate
+  )) %>%
+  ungroup()
+
+unique(data_cleaned$cardiovasc_death_rate)
+```
+
+
+stringency_index
+```{r}
+sum(is.na(data_cleaned$stringency_index))
+
+
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(stringency_index = na.locf(stringency_index, na.rm = FALSE)) %>%  # Forward fill
+  mutate(stringency_index = na.locf(stringency_index, fromLast = TRUE, na.rm = FALSE)) %>%  # Backward fill
+  ungroup()
+
+data_cleaned <- data_cleaned %>%
+  group_by(continent) %>%
+  mutate(stringency_index = ifelse(
+    is.na(stringency_index),
+    mean(stringency_index, na.rm = TRUE),
+    stringency_index
+  )) %>%
+  ungroup()
+unique(data_cleaned$stringency_index)
+
+data_cleaned <- data_cleaned %>%
+  mutate(stringency_index = ifelse(
+    is.na(stringency_index),
+    mean(stringency_index, na.rm = TRUE),
+    stringency_index
+  ))
+```
+
+
+population_density
+```{r}
+sum(is.na(data_cleaned$population_density))
+# Forward fill + backward fill by country (works if some rows in the same country have values)
+library(zoo)
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(population_density = na.locf(population_density, na.rm = FALSE)) %>%
+  mutate(population_density = na.locf(population_density, fromLast = TRUE, na.rm = FALSE)) %>%
+  ungroup()
+
+# If there are still NAs, use continent mean
+data_cleaned <- data_cleaned %>%
+  group_by(continent) %>%
+  mutate(population_density = ifelse(
+    is.na(population_density),
+    mean(population_density, na.rm = TRUE),
+    population_density
+  )) %>%
+  ungroup()
+
+
+unique(data_cleaned$population_density)
+```
+
+
+
+
+median_age
+```{r}
+sum(is.na(data_cleaned$median_age))
+
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(median_age = na.locf(median_age, na.rm = FALSE)) %>%
+  mutate(median_age = na.locf(median_age, fromLast = TRUE, na.rm = FALSE)) %>%
+  ungroup()
+
+data_cleaned <- data_cleaned %>%
+  group_by(continent) %>%
+  mutate(median_age = ifelse(
+    is.na(median_age),
+    mean(median_age, na.rm = TRUE),
+    median_age
+  )) %>%
+  ungroup()
+
+unique(data_cleaned$continent)
+```
+
+
+aged_65_older
+```{r}
+sum(is.na(data_cleaned$aged_65_older))
+
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(aged_65_older = na.locf(aged_65_older, na.rm = FALSE)) %>%
+  mutate(aged_65_older = na.locf(aged_65_older, fromLast = TRUE, na.rm = FALSE)) %>%
+  ungroup()
+
+data_cleaned <- data_cleaned %>%
+  group_by(continent) %>%
+  mutate(aged_65_older = ifelse(
+    is.na(aged_65_older),
+    mean(aged_65_older, na.rm = TRUE),
+    aged_65_older
+  )) %>%
+  ungroup()
+
+unique(data_cleaned$aged_65_older)
+
+```
+
+
+aged_70_older
+```{r}
+sum(is.na(data_cleaned$aged_70_older))
+
+
+```
+
+
+gdp_per_capita
+
+```{r}
+sum(is.na(data_cleaned$gdp_per_capita))
+
+
+```
+
+reproduction_rate
+```{r}
+sum(is.na(data_cleaned$reproduction_rate))
+
+```
+
+
+```{r}
+library(dplyr)
+library(zoo)
+
+columns_to_clean <- c("aged_70_older", "gdp_per_capita", "reproduction_rate")
+
+for (col in columns_to_clean) {
+  data_cleaned <- data_cleaned %>%
+    group_by(location) %>%
+    arrange(date) %>%
+    mutate(!!sym(col) := na.locf(!!sym(col), na.rm = FALSE)) %>%
+    mutate(!!sym(col) := na.locf(!!sym(col), fromLast = TRUE, na.rm = FALSE)) %>%
+    ungroup()
+  
+  data_cleaned <- data_cleaned %>%
+    group_by(continent) %>%
+    mutate(!!sym(col) := ifelse(
+      is.na(!!sym(col)),
+      mean(!!sym(col), na.rm = TRUE),
+      !!sym(col)
+    )) %>%
+    ungroup()
+}
+```
+
+
+```{r}
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(diabetes_prevalence = na.locf(diabetes_prevalence, na.rm = FALSE)) %>%
+  mutate(diabetes_prevalence = na.locf(diabetes_prevalence, fromLast = TRUE, na.rm = FALSE)) %>%
+  ungroup() %>%
+  group_by(continent) %>%
+  mutate(diabetes_prevalence = ifelse(
+    is.na(diabetes_prevalence),
+    mean(diabetes_prevalence, na.rm = TRUE),
+    diabetes_prevalence
+  )) %>%
+  ungroup() %>%
+  mutate(diabetes_prevalence = ifelse(
+    is.na(diabetes_prevalence),
+    mean(diabetes_prevalence, na.rm = TRUE),
+    diabetes_prevalence
+  ))
+```
+
+```{r}
+data_cleaned <- data_cleaned %>%
+  group_by(location) %>%
+  arrange(date) %>%
+  mutate(life_expectancy = na.locf(life_expectancy, na.rm = FALSE)) %>%
+  mutate(life_expectancy = na.locf(life_expectancy, fromLast = TRUE, na.rm = FALSE)) %>%
+  ungroup() %>%
+  group_by(continent) %>%
+  mutate(life_expectancy = ifelse(
+    is.na(life_expectancy),
+    mean(life_expectancy, na.rm = TRUE),
+    life_expectancy
+  )) %>%
+  ungroup()
+```
+
+
+```{r}
+sum(is.na(data_cleaned$continent))
+```
+
+
+```{r}
+library(dplyr)
+library(zoo)
+
+cols_total <- c("total_cases", "total_deaths", "total_cases_per_million", "total_deaths_per_million")
+
+for (col in cols_total) {
+  data_cleaned <- data_cleaned %>%
+    group_by(location) %>%
+    arrange(date) %>%
+    mutate(!!sym(col) := na.locf(!!sym(col), na.rm = FALSE)) %>%
+    ungroup()
+}
+```
+
+
+```{r}
+cols_new <- c("new_cases", "new_deaths", "new_cases_per_million", "new_deaths_per_million")
+
+for (col in cols_new) {
+  data_cleaned[[col]][is.na(data_cleaned[[col]])] <- 0
+}
+```
+
+
+```{r}
+#data_cleaned <- data_cleaned %>% filter(!is.na(continent))
+
+library(dplyr)
+library(zoo)
+
+# 1. Define columns to fix
+cols_total <- c("total_cases", "total_deaths", 
+                "total_cases_per_million", "total_deaths_per_million")
+cols_smoothed <- c("new_cases_smoothed", "new_deaths_smoothed", 
+                   "new_cases_smoothed_per_million", "new_deaths_smoothed_per_million")
+
+# 2. Forward fill & backward fill total and smoothed columns
+for (col in c(cols_total, cols_smoothed)) {
+  data_cleaned <- data_cleaned %>%
+    group_by(location) %>%
+    arrange(date) %>%
+    mutate(!!sym(col) := na.locf(!!sym(col), na.rm = FALSE)) %>%
+    mutate(!!sym(col) := na.locf(!!sym(col), fromLast = TRUE, na.rm = FALSE)) %>%
+    ungroup()
+}
+
+# 3. Replace any final NAs in totals/smoothed with 0
+for (col in c(cols_total, cols_smoothed)) {
+  data_cleaned[[col]][is.na(data_cleaned[[col]])] <- 0
+}
+```
+
+```{r}
+write.csv(data_cleaned, "data_cleaned.csv", row.names = FALSE)
+
+```
+
+```{r}
+unique(data$location)
+```
+
+
+```{r}
+c("England", "Wales", "Taiwan", "Scotland", "Northern Ireland", "Macao") %in% unique(data$location)
+```
+
+
+```{r}
+library(dplyr)
+
+data %>%
+  filter(location %in% c("England", "Wales", "Taiwan", "Scotland", "Northern Ireland", "Macao", "North Korea")) %>%
+  group_by(location) %>%
+  summarise(row_count = n())
+```
+
+
+```{r}
+data %>%
+  filter(location %in% c("England", "Wales", "Taiwan", "Scotland", "Northern Ireland", "Macao", "North Korea")) %>%
+  group_by(location) %>%
+  summarise(total_cases = sum(total_cases, na.rm = TRUE)) %>%
+  arrange(total_cases)
+```
+
+
+```{r}
+data %>%
+  filter(location %in% c("England", "Wales", "Taiwan", "Scotland", "Northern Ireland", "Macao", "North Korea")) %>%
+  group_by(location) %>%
+  summarise(
+    total_NAs = sum(is.na(total_cases)),
+    total_nonNAs = sum(!is.na(total_cases)),
+    total_cases_sum = sum(total_cases, na.rm = TRUE)
+  )
+```
+
+
+```{r}
+unique(data$location)[str_detect(unique(data$location), "United|UK|Kingdom")]
+```
+
+
+```{r}
+# Install (if needed) and load packages
+install.packages("naniar")      # For missingness heatmap
+install.packages("ggplot2")     # For plotting
+library(naniar)
+library(ggplot2)
+
+# Assuming your cleaned dataset is named `data_cleaned`
+
+# 🔥 Heatmap of Missing Values
+gg_miss_var(data, show_pct = TRUE) +
+  labs(
+    title = "🔥 Missing Data  by Variable",
+    x = "Variable",
+    y = "Number of Missing Values"
+  ) +
+  theme_minimal(base_size = 8)
+```
+
+
+```{r}
+# Install and load libraries (run only once)
+
+# Make sure your cleaned data is called data_cleaned
+
+# 🧯Heatmap-style visualization (tile map) of missing values
+vis_miss(data, sort_miss = TRUE, cluster = TRUE) +
+  labs(
+    title = "🧊 Heatmap of Missingness in COVID-19 Variables",
+    subtitle = "Each tile shows whether the value is missing (NA) or observed",
+    x = "Variables",
+    y = "Rows / Observations"
+  ) +
+  theme_minimal(base_size = 8) +  # smaller font
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 10)
+  )
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

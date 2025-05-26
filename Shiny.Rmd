@@ -1,0 +1,343 @@
+---
+title: "Shiny"
+author: "Ruth"
+date: "2025-05-06"
+output: html_document
+---
+
+```{r}
+library(shiny)
+library(leaflet)
+library(readr)
+library(dplyr)
+library(sf)
+library(rnaturalearth)
+library(htmltools)
+```
+
+
+```{r}
+# Load COVID data
+data_cleaned <- read_csv("data_cleaned.csv")
+
+# Load country centroids using ISO codes
+world <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  mutate(centroid = st_centroid(geometry)) %>%
+  mutate(
+    longitude = st_coordinates(centroid)[, 1],
+    latitude = st_coordinates(centroid)[, 2]
+  ) %>%
+  select(iso_a3, longitude, latitude)
+
+# Join with your data
+covid_with_coords <- data_cleaned %>%
+  left_join(world, by = c("iso_code" = "iso_a3")) %>%
+  filter(!is.na(latitude), !is.na(longitude))
+
+# UI
+ui <- fluidPage(
+  tags$style(HTML("
+    #date_ui {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      z-index: 1000;
+      background-color: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0px 0px 10px rgba(0,0,0,0.2);
+    }
+  ")),
+
+  leafletOutput("map", height = "100vh"),
+
+  absolutePanel(id = "date_ui", fixed = TRUE, draggable = FALSE,
+    sliderInput("date", "Select Date:",
+                min = as.Date(min(covid_with_coords$date, na.rm = TRUE)),
+                max = as.Date(max(covid_with_coords$date, na.rm = TRUE)),
+                value = as.Date("2020-03-01"),
+                timeFormat = "%Y-%m-%d",
+                animate = animationOptions(interval = 1000, loop = FALSE))
+  )
+)
+
+# Server
+server <- function(input, output, session) {
+  filtered_data <- reactive({
+    covid_with_coords %>%
+      filter(date == input$date)
+  })
+
+  output$map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = 0, lat = 20, zoom = 2)
+  })
+
+  observe({
+    leafletProxy("map") %>%
+      clearShapes() %>%
+      clearMarkers() %>%
+      addCircleMarkers(
+        data = filtered_data(),
+        lng = ~longitude,
+        lat = ~latitude,
+        radius = ~pmin(sqrt(total_cases) / 100, 30),
+        color = "red",
+        stroke = FALSE,
+        fillOpacity = 0.7,
+        popup = ~paste0(
+          "<b>", location, "</b><br>",
+          "Date: ", date, "<br>",
+          "Cases: ", formatC(total_cases, format = "d", big.mark = ","), "<br>",
+          "Deaths: ", formatC(total_deaths, format = "d", big.mark = ",")
+        ) %>% lapply(HTML)
+      )
+  })
+}
+
+# Run App
+shinyApp(ui, server)
+```
+
+
+```{r}
+# world map environment data 
+# add longitudes and latitude and google for developers csv 
+# get the googlepublic data package and add it to the cleaned_data.. add both rows and columns 
+# githib.com/gveagayongooglePublicData
+```
+
+
+
+```{r}
+#variable importance factor, random forest, variable importance model, 
+# after variable importance, 
+# check box shiny 
+# 
+```
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+
+ui <- fluidPage(
+  tags$style(HTML("
+    .absolute-panel {
+      background-color: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+  ")),
+
+  leafletOutput("map", width = "100%", height = "100vh"),
+
+  absolutePanel(
+    top = 20, right = 20, width = 300, class = "absolute-panel",
+    sliderInput("date", "Select Date:", 
+                min = as.Date("2020-01-01"), 
+                max = as.Date("2023-12-31"), 
+                value = as.Date("2020-01-01"),
+                timeFormat = "%b %Y",
+                animate = animationOptions(interval = 1500, loop = TRUE))
+  )
+)
+
+server <- function(input, output, session) {
+  filtered_data <- reactive({
+    shiny_data %>% filter(date == input$date)
+  })
+
+  output$map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(0, 20, zoom = 2)
+  })
+
+  observe({
+    leafletProxy("map") %>%
+      clearMarkers() %>%
+      addCircleMarkers(
+        data = filtered_data(),
+        lng = ~long, lat = ~lat,
+        radius = ~log10(total_cases + 10) * 2,
+        fillColor = "red",
+        fillOpacity = 0.6,
+        color = "white",
+        weight = 0.5,
+label = ~paste0(location, ": ", formatC(total_cases, big.mark = ","), " cases")
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+```{r}
+# Install these if needed
+install.packages("gganimate")
+install.packages("transformr")
+
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+
+# Example (replace with your cleaned dataset)
+animated_plot <- data_cleaned %>%
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  ggplot(aes(x = long, y = lat, size = total_cases, color = total_cases)) +
+  borders("world", colour = "gray90", fill = "gray95") +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_color_viridis_c() +
+  theme_minimal() +
+  labs(title = "COVID-19 Spread: {frame_time}", x = "", y = "") +
+  transition_time(as.Date(date)) +
+  ease_aes('linear')
+
+# Save as GIF
+anim_save("covid_spread.gif", animated_plot, width = 800, height = 500, duration = 15, fps = 10)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+
+
+```{r}
+ui <- fluidPage(
+  tags$style(HTML("
+    .absolute-panel {
+      background-color: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+  ")),
+
+  leafletOutput("map", width = "100%", height = "100vh"),
+
+  absolutePanel(
+    top = 20, right = 20, width = 300, class = "absolute-panel",
+    sliderInput("date", "Select Date:", 
+                min = as.Date("2020-01-01"), 
+                max = as.Date("2023-12-31"), 
+                value = as.Date("2020-01-01"),
+                timeFormat = "%b %Y",
+                animate = animationOptions(interval = 1500, loop = TRUE))
+  )
+)
+
+server <- function(input, output, session) {
+
+  # Data with actual cases
+  filtered_data <- reactive({
+    shiny_data %>% filter(date == input$date & total_cases > 0)
+  })
+
+  # Data with zero total cases
+  no_case_data <- reactive({
+    shiny_data %>% filter(date == input$date & total_cases == 0)
+  })
+
+  output$map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(0, 20, zoom = 2)
+  })
+
+  observe({
+    leafletProxy("map") %>%
+      clearMarkers() %>%
+
+      # 🔴 Add markers for countries with reported cases
+      addCircleMarkers(
+        data = filtered_data(),
+        lng = ~long, lat = ~lat,
+        radius = ~log10(total_cases + 10) * 2,
+        fillColor = "red",
+        fillOpacity = 0.6,
+        color = "white",
+        weight = 0.5,
+        label = ~paste0(location, ": ", formatC(total_cases, big.mark = ","), " cases")
+      ) %>%
+
+      # ⚪ Add markers for countries with *no* cases
+      addCircleMarkers(
+        data = no_case_data(),
+        lng = ~long, lat = ~lat,
+        radius = 3,
+        fillColor = "gray",
+        fillOpacity = 0.5,
+        color = "darkgray",
+        weight = 0.5,
+        label = ~paste0(location, ": No reported cases")
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r}
+# Install if not already installed
+install.packages("gganimate")
+install.packages("transformr")
+install.packages("viridis")
+
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+library(viridis)
+
+# Use shiny_data if that's the dataset with lat/long
+# Make sure these columns exist: lat, long, total_cases, date
+
+# Filter and animate
+animated_plot <- shiny_data %>%
+  filter(!is.na(lat), !is.na(long), !is.na(date), total_cases > 0) %>%
+  ggplot(aes(x = long, y = lat, size = total_cases, color = total_cases)) +
+  borders("world", colour = "gray90", fill = "gray95") +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_color_viridis_c(option = "plasma") +
+  theme_minimal() +
+  labs(title = "COVID-19 Spread Over Time: {frame_time}",
+       x = NULL, y = NULL) +
+  transition_time(as.Date(date)) +
+  ease_aes('linear')
+
+# Save the animation as a GIF
+anim_save("covid_spread.gif", animation = animated_plot, width = 800, height = 500, duration = 15, fps = 10)
+```
+
+
+```{r}
+getwd()
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

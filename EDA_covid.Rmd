@@ -1,0 +1,388 @@
+---
+title: "EDA_covid"
+author: "Ruth"
+date: "2025-05-05"
+output: html_document
+---
+
+```{r}
+# Dimensions
+dim(data_cleaned)
+
+# Column names
+colnames(data_cleaned)
+
+# First few rows
+head(data_cleaned)
+
+# Summary statistics
+summary(data_cleaned)
+```
+
+
+```{r}
+# install.packages("Amelia")
+# library(Amelia)
+# missmap(data, main = "Missing Values Heatmap", col = c("red", "grey"), legend = TRUE)
+```
+
+
+```{r}
+library(ggplot2)
+
+# Example: Histogram of total_cases
+ggplot(data_cleaned, aes(x = total_cases_per_million)) +
+  geom_histogram(fill = "steelblue", bins = 50) +
+  labs(title = "Distribution of Total Cases per Million", x = "Total Cases per Million", y = "Count")
+```
+```{r}
+ggplot(latest_data, aes(x = total_cases_per_million)) +
+  geom_histogram(fill = "steelblue", bins = 40, color = "white", alpha = 0.9) +
+  labs(
+    title = "How COVID-19 Spread Differed Across Countries",
+    subtitle = "Most countries had moderate case counts, but a few were hit extremely hard",
+    x = "Total COVID-19 Cases per Million (per Country)",
+    y = "Number of Countries in Each Range"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+library(corrplot)
+
+numeric_vars <- data_cleaned %>% 
+  dplyr::select(where(is.numeric)) %>%
+  cor(use = "complete.obs")
+
+corrplot(numeric_vars, method = "color", type = "upper", tl.cex = 0.8)
+```
+
+```{r}
+library(corrplot)
+
+library(corrplot)
+
+numeric_vars <- data_cleaned %>%
+  dplyr::select(where(is.numeric)) %>%
+  cor(use = "complete.obs")
+
+corrplot(numeric_vars,
+         method = "color",       # Colored tiles
+         type = "upper",         # Upper triangle only
+         tl.cex = 0.6,           # Smaller text labels
+         tl.col = "black",       # Label color
+         tl.srt = 45,            # Rotate labels 45 degrees
+         col = colorRampPalette(c("red", "white", "blue"))(200)  # Fancy color gradient
+)
+
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+```{r}
+data_cleaned %>%
+  group_by(continent) %>%
+  summarise(avg_cases = mean(total_cases_per_million, na.rm = TRUE)) %>%
+  arrange(desc(avg_cases))
+```
+
+
+```{r}
+data_cleaned %>%
+  group_by(date) %>%
+  summarise(total_cases = sum(total_cases, na.rm = TRUE)) %>%
+  ggplot(aes(x = date, y = total_cases)) +
+  geom_line(color = "darkred") +
+  labs(title = "Global COVID Cases Over Time", x = "Date", y = "Total Cases")
+
+data_cleaned %>%
+  filter(location == "United States") %>%
+  group_by(date) %>%
+  summarise(total_cases = sum(total_cases, na.rm = TRUE)) %>%
+  ggplot(aes(x = date, y = total_cases)) +
+  geom_line(color = "darkred") +
+  labs(
+    title = "COVID Cases Over Time in the United States",
+    x = "Date",
+    y = "Total Cases"
+  )
+
+
+data_cleaned %>%
+  filter(location == "Ethiopia") %>%
+  group_by(date) %>%
+  summarise(total_cases = sum(total_cases, na.rm = TRUE)) %>%
+  ggplot(aes(x = date, y = total_cases)) +
+  geom_line(color = "darkred") +
+  labs(
+    title = "COVID Cases Over Time in Ethiopia",
+    x = "Date",
+    y = "Total Cases"
+  )
+
+```
+```{r}
+# Load required packages
+library(maps)
+library(dplyr)
+library(countrycode)
+
+# Get map data
+map_data <- map("world", plot = FALSE, fill = TRUE)
+
+# Extract polygons into a data frame
+coord_df <- map_data.frame <- data.frame(
+  location = rep(map_data$names, map_data$n),
+  longitude = map_data$x,
+  latitude = map_data$y
+)
+
+# Remove NA rows
+coord_df <- coord_df %>% filter(!is.na(longitude) & !is.na(latitude))
+
+# Compute mean coordinates (centroid) for each country
+centroids <- coord_df %>%
+  group_by(location) %>%
+  summarise(
+    latitude = mean(latitude),
+    longitude = mean(longitude),
+    .groups = "drop"
+  )
+
+# Add ISO3 codes for merging
+centroids$iso3c <- countrycode(centroids$location, origin = "country.name", destination = "iso3c")
+data_cleaned$iso3c <- countrycode(data_cleaned$location, origin = "country.name", destination = "iso3c")
+
+# Merge into your cleaned dataset
+data_cleaned <- data_cleaned %>%
+  select(-latitude, -longitude) %>%  # remove old columns if present
+  left_join(centroids[, c("iso3c", "latitude", "longitude")], by = "iso3c")
+```
+
+```{r}
+# install.packages("gapminder")
+# library(gapminder)
+# install.packages("countrycode")
+# install.packages("maps")
+# library(gapminder)
+# library(dplyr)
+# library(countrycode)
+# library(maps)
+
+# Get built-in country coordinates
+world_coords <- map("world", plot = FALSE, fill = TRUE)
+coord_df <- data.frame(
+  location = world_coords$names,
+  longitude = world_coords$x[!is.na(world_coords$x)],
+  latitude = world_coords$y[!is.na(world_coords$y)]
+)
+
+# Clean up duplicates
+coord_df <- coord_df[!duplicated(coord_df$location), ]
+
+```
+
+```{r}
+# Load required packages
+library(maps)
+library(dplyr)
+library(countrycode)
+
+# Get map data
+map_data <- map("world", plot = FALSE, fill = TRUE)
+
+# Extract polygons into a data frame
+coord_df <- map_data.frame <- data.frame(
+  location = rep(map_data$names, map_data$n),
+  longitude = map_data$x,
+  latitude = map_data$y
+)
+
+# Remove NA rows
+coord_df <- coord_df %>% filter(!is.na(longitude) & !is.na(latitude))
+
+# Compute mean coordinates (centroid) for each country
+centroids <- coord_df %>%
+  group_by(location) %>%
+  summarise(
+    latitude = mean(latitude),
+    longitude = mean(longitude),
+    .groups = "drop"
+  )
+
+# Add ISO3 codes for merging
+centroids$iso3c <- countrycode(centroids$location, origin = "country.name", destination = "iso3c")
+data_cleaned$iso3c <- countrycode(data_cleaned$location, origin = "country.name", destination = "iso3c")
+
+# Merge into your cleaned dataset
+data_cleaned <- data_cleaned %>%
+  select(-latitude, -longitude) %>%  # remove old columns if present
+  left_join(centroids[, c("iso3c", "latitude", "longitude")], by = "iso3c")
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+library(countrycode)
+
+# 1. Use ggplot2 map data for countries
+world_map <- map_data("world")
+
+# 2. Get centroid coordinates per region (aka country)
+country_coords <- world_map %>%
+  group_by(region) %>%
+  summarise(
+    longitude = mean(long, na.rm = TRUE),
+    latitude = mean(lat, na.rm = TRUE)
+  ) %>%
+  mutate(
+    iso3c = countrycode(region, origin = "country.name", destination = "iso3c")
+  )
+
+# 3. Add ISO codes to your cleaned data
+data_cleaned$iso3c <- countrycode(data_cleaned$location, origin = "country.name", destination = "iso3c")
+
+# 4. Join the new coordinates
+data_cleaned <- data_cleaned %>%
+  select(-latitude, -longitude) %>%  # Remove old lat/lon if they exist
+  left_join(country_coords[, c("iso3c", "latitude", "longitude")], by = "iso3c")
+```
+
+```{r}
+library(shiny)
+library(leaflet)
+ui <- fluidPage(
+  sliderInput("date", "Choose a date:", min = min(data_cleaned$date),
+              max = max(data_cleaned$date), value = min(data_cleaned$date),
+              timeFormat = "%Y-%m-%d"),
+  leafletOutput("map")
+)
+
+server <- function(input, output) {
+  output$map <- renderLeaflet({
+    filtered_data <- data_cleaned %>% filter(date == input$date)
+    
+    leaflet(filtered_data) %>%
+      addTiles() %>%
+      addCircleMarkers(~longitude, ~latitude,
+                       radius = ~sqrt(total_cases) / 1000,
+                       popup = ~paste(location, "<br>", total_cases, "cases"),
+                       color = "red", fillOpacity = 0.6)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r}
+longlat <- read_csv("longlat.csv")
+```
+
+
+```{r}
+longlat_clean <- longlat %>%
+  select(`Alpha-3 code`, `Latitude (average)`, `Longitude (average)`)
+```
+
+
+```{r}
+longlat_clean <- longlat_clean %>%
+  rename(
+    iso_code = `Alpha-3 code`,
+    lat = `Latitude (average)`,
+    long = `Longitude (average)`
+  )
+```
+
+
+```{r}
+colnames(longlat_clean)
+```
+
+
+```{r}
+shiny_data <- data_cleaned %>%
+  left_join(longlat_clean, by = "iso_code")
+```
+
+
+```{r}
+longlat_clean <- longlat_clean %>%
+  distinct(iso_code, .keep_all = TRUE)
+```
+
+
+```{r}
+shiny_data <- data_cleaned %>%
+  left_join(longlat_clean, by = "iso_code")
+```
+
+
+```{r}
+sum(is.na(shiny_data$lat))
+```
+```{r}
+anti_join(data_cleaned, longlat_clean, by = "iso_code") %>%
+  count(iso_code) %>%
+  arrange(desc(n))
+```
+
+
+```{r}
+length(unique(data_cleaned$iso_code))
+length(unique(longlat_clean$iso_code))
+```
+
+
+```{r}
+unique(data_cleaned$iso_code)[!unique(data_cleaned$iso_code) %in% longlat_clean$iso_code]
+```
+
+thiiiisss 
+```{r}
+extra_coords <- data.frame(
+  iso_code = c("OWID_KOS", "OWID_SCT", "OWID_NIR", "OWID_ENG", "OWID_WLS", "OWID_CYN"),
+  lat = c(42.6026, 56.4907, 54.7877, 52.3555, 52.1307, 28.2936),
+  long = c(20.9020, -4.2026, -6.4923, -1.1743, -3.7837, -16.6214)
+)
+
+longlat_clean <- bind_rows(longlat_clean, extra_coords)
+
+shiny_data <- data_cleaned %>%
+  left_join(longlat_clean, by = "iso_code")
+
+```
+
+```{r}
+sum(is.na(shiny_data$lat))  # Should go down by 6!
+```
+
+
+```{r}
+data_cleaned %>%
+  group_by(location) %>%
+  summarise(total = sum(total_cases, na.rm = TRUE)) %>%
+  filter(total == 0)
+```
+
+
+

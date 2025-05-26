@@ -1,0 +1,595 @@
+---
+title: "random_forest"
+author: "Ruth"
+date: "2025-05-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages("randomForest")
+library(randomForest)
+```
+
+
+```{r}
+colnames(shiny_data)
+```
+
+
+```{r}
+predictors <- c(
+  "total_cases",
+  "total_deaths",
+  "new_deaths",
+  "new_deaths_smoothed",
+  "total_cases_per_million",
+  "total_deaths_per_million",
+  "new_deaths_per_million",
+  "new_deaths_smoothed_per_million",
+  "reproduction_rate",
+  "positive_rate",
+  "total_vaccinations_per_hundred",
+  "total_boosters_per_hundred",
+  "new_vaccinations_smoothed_per_million",
+  "stringency_index",
+  "population_density",
+  "median_age",
+  "aged_65_older",
+  "aged_70_older",
+  "gdp_per_capita",
+  "extreme_poverty",
+  "cardiovasc_death_rate",
+  "diabetes_prevalence",
+  "handwashing_facilities",
+  "life_expectancy",
+  "human_development_index",
+  "population",
+  "testing_efficiency",
+  "handwashing_missing",
+  "reproduction_rate_missing",
+  "avg_smokers",
+  "positive_rate_missing",
+  "new_tests_smoothed_per_thousand"
+)
+```
+
+
+```{r}
+rf_data <- shiny_data %>%
+  select(all_of(predictors), total_cases) %>%
+  na.omit()
+
+# Fit the random forest model
+set.seed(123)
+rf_sample <- rf_data[sample(nrow(rf_data), 5000), ]  # adjust to a size that works for your RAM
+rf_model <- randomForest(total_cases ~ ., data = rf_sample, importance = TRUE, ntree = 300)
+# Show variable importance
+importance(rf_model)
+varImpPlot(rf_model, main = "Variable Importance for COVID Spread")
+```
+
+
+```{r}
+# Extract importance and convert to data frame
+importance_df <- as.data.frame(importance(rf_model))
+importance_df$Variable <- rownames(importance_df)
+
+# Use %IncMSE for importance ranking
+importance_df <- importance_df %>%
+  arrange(desc(`%IncMSE`)) %>%
+  mutate(Variable = fct_reorder(Variable, `%IncMSE`))
+
+# Plot it
+ggplot(importance_df, aes(x = Variable, y = `%IncMSE`)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Variable Importance for Predicting COVID-19 Spread",
+    x = "Variable",
+    y = "% Increase in MSE"
+  ) +
+  theme_minimal()
+```
+
+“Imagine you’re trying to find the best players on a soccer team. Boruta puts fake players on the field too. If a real player keeps scoring goals and playing better than the fakes, you know they’re truly important. That’s how I found the MVP features for predicting COVID-19.”
+```{r}
+# Install if not already installed
+if (!require("Boruta")) install.packages("Boruta")
+
+library(Boruta)
+
+# Subset the data
+rf_data <- shiny_data %>%
+  select(
+    total_cases,
+    total_deaths, new_deaths, new_deaths_smoothed,
+    total_cases_per_million, total_deaths_per_million,
+    new_deaths_per_million, new_deaths_smoothed_per_million,
+    reproduction_rate, positive_rate,
+    total_vaccinations_per_hundred, total_boosters_per_hundred,
+    new_vaccinations_smoothed_per_million, stringency_index,
+    population_density, median_age, aged_65_older, aged_70_older,
+    gdp_per_capita, extreme_poverty, cardiovasc_death_rate,
+    diabetes_prevalence, handwashing_facilities, life_expectancy,
+    human_development_index, population, testing_efficiency,
+    handwashing_missing, reproduction_rate_missing,
+    avg_smokers, positive_rate_missing, new_tests_smoothed_per_thousand
+  ) %>% na.omit()
+
+# Run Boruta feature selection
+set.seed(123)
+boruta_result <- Boruta(total_cases ~ ., data = rf_data, doTrace = 2)
+
+# Print results
+print(boruta_result)
+
+# Get confirmed important features
+confirmed_features <- getSelectedAttributes(boruta_result, withTentative = FALSE)
+confirmed_features
+
+# Plot importance
+plot(boruta_result, las = 2, cex.axis = 0.7)
+```
+
+
+```{r}
+# Take a manageable sample
+set.seed(123)
+rf_sample <- rf_data[sample(nrow(rf_data), 50000), ]  # or try 100,000 if you're brave
+
+# Run Boruta with a cap on maxRuns
+boruta_result <- Boruta(total_cases ~ ., data = rf_sample, doTrace = 2, maxRuns = 11)
+
+# Get confirmed features
+confirmed_features <- getSelectedAttributes(boruta_result, withTentative = FALSE)
+print(confirmed_features)
+
+# Plot
+plot(boruta_result, las = 2, cex.axis = 0.7)
+
+
+  )
+```
+```{r}
+# Load ggplot2 if you haven’t
+library(ggplot2)
+
+# Extract stats from your finished Boruta run
+boruta_df <- attStats(boruta_result)
+boruta_df$Feature <- rownames(boruta_df)
+
+# Filter to only confirmed features
+boruta_confirmed <- boruta_df[boruta_df$decision == "Confirmed", ]
+
+# Plot the clean barplot
+ggplot(boruta_confirmed, aes(x = reorder(Feature, MeanImp), y = MeanImp)) +
+  geom_col(fill = "#6a5acd") +  # Soft purple aesthetic
+  coord_flip() +
+  labs(
+    title = "✨ Confirmed Important Features (Boruta)",
+    x = "Feature",
+    y = "Mean Importance"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+
+```{r}
+library(ggplot2)
+
+# Filter confirmed features
+boruta_df <- attStats(boruta_result)
+boruta_df$Feature <- rownames(boruta_df)
+boruta_confirmed <- boruta_df[boruta_df$decision == "Confirmed", ]
+
+# Plot
+ggplot(boruta_confirmed, aes(x = reorder(Feature, meanImp), y = meanImp, fill = meanImp)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_gradient(low = "#F9D5E5", high = "#FF6F61") +
+  labs(
+    title = "🌟 Top Features Confirmed by Boruta",
+    x = "Feature",
+    y = "Mean Importance Score"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  )
+```
+
+
+```{r}
+library(ggplot2)
+
+# Get importance stats from Boruta result
+boruta_df <- attStats(boruta_result)
+boruta_df$Feature <- rownames(boruta_df)
+
+# Filter only confirmed important features
+boruta_confirmed <- subset(boruta_df, decision == "Confirmed")
+
+# Now plot using meanImp (with lowercase "m")
+ggplot(boruta_confirmed, aes(x = reorder(Feature, meanImp), y = meanImp)) +
+  geom_col(fill = "#6a5acd") +
+  coord_flip() +
+  labs(
+    title = "Top Features Confirmed by Boruta",
+    x = "Feature",
+    y = "Mean Importance"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+This is the oneeee to run for simulationnn.. yuhh
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+
+# Do NOT scale globally now — removed the mutate() before UI/server
+
+ui <- fluidPage(
+  titlePanel("COVID-19 Spread Simulator"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("date", "Select Date:",
+                  min = as.Date(min(shiny_data$date)),
+                  max = as.Date(max(shiny_data$date)),
+                  value = as.Date(min(shiny_data$date)),
+                  timeFormat = "%b %d, %Y"),
+      sliderInput("pop_weight", "Population Weight", 0, 2, 1, step = 0.1),
+      sliderInput("gdp_weight", "GDP per Capita Weight", 0, 2, 1, step = 0.1),
+      sliderInput("stringency_weight", "Stringency Index Weight", 0, 2, 1, step = 0.1)
+    ),
+    mainPanel(
+      leafletOutput("covidMap", height = 600)
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  reactive_data <- reactive({
+    shiny_data %>%
+      filter(as.Date(date) == input$date) %>%
+      mutate(
+        pop_scaled = scale(population)[, 1],
+        gdp_scaled = scale(gdp_per_capita)[, 1],
+        stringency_scaled = scale(stringency_index)[, 1],
+        adjusted_cases = total_cases *
+          (1 + input$pop_weight * pop_scaled) *
+          (1 + input$gdp_weight * gdp_scaled) *
+          (1 + input$stringency_weight * stringency_scaled)
+      )
+  })
+
+  output$covidMap <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = mean(shiny_data$long), lat = mean(shiny_data$lat), zoom = 2)
+  })
+
+  observe({
+    leafletProxy("covidMap", data = reactive_data()) %>%
+      clearMarkers() %>%
+      addCircleMarkers(
+        lng = ~long, lat = ~lat,
+        radius = ~log10(adjusted_cases + 10) * 2,
+        fillColor = "red", fillOpacity = 0.6,
+        stroke = FALSE,
+        popup = ~paste0("<b>", location, "</b><br>Total Cases: ", round(total_cases),
+                        "<br>Adjusted: ", round(adjusted_cases))
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+
+# Preprocess the data
+shiny_data <- shiny_data %>%
+  mutate(
+    pop_scaled = scale(population)[, 1],
+    gdp_scaled = scale(gdp_per_capita)[, 1],
+    stringency_scaled = scale(stringency_index)[, 1]
+  )
+
+ui <- fluidPage(
+  titlePanel("COVID-19 Spread Simulator (Checkbox Edition)"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("date", "Select Date:",
+                  min = as.Date(min(shiny_data$date)),
+                  max = as.Date(max(shiny_data$date)),
+                  value = as.Date(min(shiny_data$date)),
+                  timeFormat = "%b %d, %Y"),
+      
+      checkboxInput("use_pop", "Include Population", TRUE),
+      checkboxInput("use_gdp", "Include GDP per Capita", TRUE),
+      checkboxInput("use_stringency", "Include Stringency Index", TRUE)
+    ),
+    mainPanel(
+      leafletOutput("covidMap", height = 600)
+    )
+  )
+)
+
+server <- function(input, output, session) {
+
+  reactive_data <- reactive({
+    data <- shiny_data %>% filter(as.Date(date) == input$date)
+
+    adjusted_cases <- data$total_cases
+
+    if (input$use_pop) {
+      adjusted_cases <- adjusted_cases * (1 + data$pop_scaled)
+    }
+    if (input$use_gdp) {
+      adjusted_cases <- adjusted_cases * (1 + data$gdp_scaled)
+    }
+    if (input$use_stringency) {
+      adjusted_cases <- adjusted_cases * (1 + data$stringency_scaled)
+    }
+
+    data$adjusted_cases <- adjusted_cases
+    data
+  })
+
+  output$covidMap <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = mean(shiny_data$long), lat = mean(shiny_data$lat), zoom = 2)
+  })
+
+  observe({
+    leafletProxy("covidMap", data = reactive_data()) %>%
+      clearMarkers() %>%
+      addCircleMarkers(
+        lng = ~long, lat = ~lat,
+        radius = ~log10(adjusted_cases + 10) * 2,
+        fillColor = "red", fillOpacity = 0.6,
+        stroke = FALSE,
+        popup = ~paste0("<b>", location, "</b><br>Total Cases: ", round(total_cases),
+                        "<br>Adjusted: ", round(adjusted_cases))
+      )
+  })
+}
+
+shinyApp(ui, server)
+```
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+
+# --- Preprocess Data (You must already have shiny_data loaded) ---
+# We'll preserve the original values and work with adjusted copies
+shiny_data <- shiny_data %>%
+  mutate(
+    population_orig = population,
+    gdp_orig = gdp_per_capita,
+    
+    diabetes_orig = diabetes_prevalence,
+    stringency_orig = stringency_index
+  )
+
+# --- UI ---
+ui <- fluidPage(
+  titlePanel("COVID-19 Spread Simulator (Direct Variable Adjustment)"),
+
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("date", "Select Date:",
+                  min = as.Date(min(shiny_data$date)),
+                  max = as.Date(max(shiny_data$date)),
+                  value = as.Date(min(shiny_data$date)),
+                  timeFormat = "%b %d, %Y"),
+
+      sliderInput("population_adj", "Population (in millions):", 0, 1500, 1000, step = 10),
+      sliderInput("gdp_adj", "GDP per Capita:", 0, 100000, 20000, step = 1000),
+      sliderInput("beds_adj", "Hospital Beds per Thousand:", 0, 10, 3, step = 0.1),
+      sliderInput("diabetes_adj", "Diabetes Prevalence (%):", 0, 20, 7, step = 0.5),
+      sliderInput("stringency_adj", "Stringency Index:", 0, 100, 50, step = 1)
+    ),
+
+    mainPanel(
+      leafletOutput("covidMap", height = 600)
+    )
+  )
+)
+
+# --- Server ---
+server <- function(input, output, session) {
+
+  reactive_data <- reactive({
+    shiny_data %>%
+      filter(as.Date(date) == input$date) %>%
+      mutate(
+        # Adjust variables based on user input
+        population = input$population_adj * 1e6,
+        gdp_per_capita = input$gdp_adj,
+        
+        diabetes_prevalence = input$diabetes_adj,
+        stringency_index = input$stringency_adj,
+
+        # Create a pseudo-model equation (adjust however you like)
+        adjusted_cases = total_cases *
+          (population / population_orig) *
+          (gdp_per_capita / gdp_orig) *
+          
+          (diabetes_prevalence / diabetes_orig) *
+          (stringency_index / stringency_orig)
+      )
+  })
+
+  output$covidMap <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = mean(shiny_data$long), lat = mean(shiny_data$lat), zoom = 2)
+  })
+
+  observe({
+    leafletProxy("covidMap", data = reactive_data()) %>%
+      clearMarkers() %>%
+      addCircleMarkers(
+        lng = ~long, lat = ~lat,
+        radius = ~log10(adjusted_cases + 10) * 2,
+        fillColor = "red", fillOpacity = 0.6,
+        stroke = FALSE,
+        popup = ~paste0(
+          "<b>", location, "</b><br>",
+          "Adjusted Cases: ", round(adjusted_cases)
+        )
+      )
+  })
+}
+
+# --- Launch App ---
+shinyApp(ui, server)
+```
+
+
+```{r}
+library(shiny)
+library(leaflet)
+library(dplyr)
+
+# ---- Preprocess: Preserve original population ----
+shiny_data <- shiny_data %>%
+  mutate(population_orig = population)
+
+# ---- UI ----
+ui <- fluidPage(
+  titlePanel("COVID-19 Spread Visualizer: Population Impact"),
+
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("date", "Select Date:",
+                  min = as.Date(min(shiny_data$date)),
+                  max = as.Date(max(shiny_data$date)),
+                  value = as.Date(min(shiny_data$date)),
+                  timeFormat = "%b %d, %Y"),
+
+      sliderInput("population_adj", "Adjust Population (%)",
+                  min = 50, max = 150, value = 100, step = 5)
+    ),
+
+    mainPanel(
+      leafletOutput("covidMap", height = 600)
+    )
+  )
+)
+
+# ---- Server ----
+server <- function(input, output, session) {
+
+  reactive_data <- reactive({
+    shiny_data %>%
+      filter(as.Date(date) == input$date) %>%
+      mutate(
+        # Adjust population based on slider %
+        adjusted_population = population_orig * input$population_adj / 100,
+        adjusted_cases = total_cases * (adjusted_population / population_orig)
+      )
+  })
+
+  output$covidMap <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = mean(shiny_data$long), lat = mean(shiny_data$lat), zoom = 2)
+  })
+
+  observe({
+    leafletProxy("covidMap", data = reactive_data()) %>%
+      clearMarkers() %>%
+      addCircleMarkers(
+        lng = ~long, lat = ~lat,
+        radius = ~log10(adjusted_cases + 10) * 2,
+        fillColor = "red", fillOpacity = 0.6,
+        stroke = FALSE,
+        popup = ~paste0(
+          "<b>", location, "</b><br>",
+          "Total Cases: ", round(total_cases), "<br>",
+          "Adjusted Cases: ", round(adjusted_cases), "<br>",
+          "Population (%): ", input$population_adj
+        )
+      )
+  })
+}
+
+# ---- Launch the App ----
+shinyApp(ui, server)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
